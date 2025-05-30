@@ -1,2 +1,2 @@
-[tools]
-ffmpeg = "latest"
+[phases.setup]
+nixPkgs = ["ffmpeg"]
