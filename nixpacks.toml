@@ -2,7 +2,7 @@
 nixpacksVersion = "1.12.0"
 
 [phases.setup]
-nixPkgs = ["ffmpeg", "python311", "pip"]
+nixPkgs = ["ffmpeg", "python311"]
 
 [start]
 cmd = "gunicorn -w 1 -b 0.0.0.0:$PORT main:app --timeout 120"
