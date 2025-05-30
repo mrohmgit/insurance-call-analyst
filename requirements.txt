@@ -2,3 +2,5 @@ flask
 openai
 flask-cors
 gunicorn
+ffmpeg-python
+
