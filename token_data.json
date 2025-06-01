@@ -1,0 +1,8 @@
+{
+  "access_token": "GBNbNvdUOajUglMl32zEHSHXqTPChVEb",
+  "refresh_token": "OtNaUgyJMuq6s3ond428afotJsjeZkoZ",
+  "access_token_expire_time": 1744949627,
+  "refresh_token_expire_time": 86400,
+  "token_url": "https://clickbroker.ras.yeastar.com/openapi/v1.0/get_token",
+  "cdr_url": "https://clickbroker.ras.yeastar.com/openapi/v1.0/cdr/search"
+}

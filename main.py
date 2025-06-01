@@ -1,21 +1,58 @@
 from flask_cors import CORS
 from flask import Flask, request, jsonify
-import openai
 import os
 import io
-import ffmpeg
+import json
+import requests
+import time
 import tempfile
+import ffmpeg
 from werkzeug.datastructures import FileStorage
 from openai import OpenAI
 
-# Set up OpenAI client
+# Load OpenAI API
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Function to downsample audio to 16kHz mono WAV
+# Load token data
+def load_token_data():
+    with open("token_data.json", "r") as f:
+        return json.load(f)
+
+# Save updated token data
+def save_token_data(data):
+    with open("token_data.json", "w") as f:
+        json.dump(data, f)
+
+# Refresh expired token
+def refresh_access_token():
+    token_data = load_token_data()
+    response = requests.post(
+        token_data["token_url"],
+        json={
+            "grant_type": "refresh_token",
+            "refresh_token": token_data["refresh_token"]
+        }
+    )
+    if response.status_code == 200:
+        new_token = response.json()
+        token_data["access_token"] = new_token["access_token"]
+        token_data["access_token_expire_time"] = new_token["access_token_expire_time"]
+        save_token_data(token_data)
+    else:
+        raise Exception("Failed to refresh token")
+
+# Check and refresh if token is expired
+def ensure_valid_token():
+    token_data = load_token_data()
+    current_time = int(time.time())
+    if current_time >= token_data["access_token_expire_time"]:
+        refresh_access_token()
+        token_data = load_token_data()
+    return token_data["access_token"], token_data["cdr_url"]
+
+# Downsample audio
 def downsample_audio(input_bytes):
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as original_file:
         original_file.write(input_bytes)
@@ -42,6 +79,34 @@ def downsample_audio(input_bytes):
 def home():
     return "Insurance Call Analyst API is running."
 
+@app.route('/get-yeastar-calls', methods=['GET'])
+def get_yeastar_calls():
+    try:
+        access_token, cdr_url = ensure_valid_token()
+
+        # Use actual GET parameters from frontend
+        start_time = request.args.get("startTime", "2024-05-01T00:00:00")
+        end_time = request.args.get("endTime", "2024-05-31T23:59:59")
+
+        payload = {
+            "start_time": start_time,
+            "end_time": end_time,
+            "direction": "inbound",
+            "limit": 100,
+            "offset": 0
+        }
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.post(cdr_url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to fetch from Yeastar", "status": response.status_code}), 500
+
+        return jsonify(response.json())
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/analyze-call', methods=['POST'])
 def analyze_call():
     if 'file' not in request.files:
@@ -50,12 +115,10 @@ def analyze_call():
     audio_file: FileStorage = request.files['file']
     audio_bytes = audio_file.read()
 
-    # Downsample the audio
     downsampled_path = downsample_audio(audio_bytes)
     if not downsampled_path:
         return jsonify({'error': 'Audio conversion failed'}), 500
 
-    # Transcribe audio using Whisper
     with open(downsampled_path, "rb") as f:
         transcript_response = client.audio.transcriptions.create(
             model="whisper-1",
@@ -64,7 +127,6 @@ def analyze_call():
         )
     transcript = transcript_response.text
 
-    # Prompt for GPT analysis
     prompt = f"""
     บทสนทนาเกี่ยวกับการขายประกันรถยนต์:
 
